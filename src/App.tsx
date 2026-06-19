@@ -7,6 +7,7 @@ import { Dashboard } from "./features/dashboard/Dashboard";
 import { Expenses } from "./features/expenses/Expenses";
 import { Analytics } from "./features/analytics/Analytics";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { CalendarEventPage } from "./features/calendar/CalendarEvent";
 import { seedDefaultCategories, hasAnyData, seedSampleData } from "./lib/api";
 import { getDbError } from "./lib/db";
 import "./index.css";
@@ -45,6 +46,7 @@ function App() {
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/expenses" element={<Expenses />} />
+              <Route path="/calendar" element={<CalendarEventPage />} />
               <Route path="/analytics" element={<Analytics />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>

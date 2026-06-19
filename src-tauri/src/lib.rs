@@ -54,6 +54,22 @@ pub fn run() {
             sql: "ALTER TABLE expenses ADD COLUMN type TEXT NOT NULL DEFAULT 'expense';",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "create_calendar_events_table",
+            sql: "
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    date TEXT NOT NULL,
+                    time TEXT,
+                    color TEXT NOT NULL DEFAULT '#3b82f6',
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()

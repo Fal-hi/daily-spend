@@ -1,5 +1,5 @@
 import { getDb } from "./db";
-import { Expense, Category, Budget } from "../types";
+import { Expense, Category, Budget, CalendarEvent } from "../types";
 
 // ─── Categories ─────────────────────────────────────────────────────────────
 
@@ -46,6 +46,53 @@ export async function seedDefaultCategories(): Promise<void> {
       );
     }
   }
+}
+
+// ─── Calendar Events ─────────────────────────────────────────────────────────
+
+export async function getCalendarEvents(): Promise<CalendarEvent[]> {
+  const db = await getDb();
+  return db.select<CalendarEvent[]>(
+    "SELECT * FROM calendar_events ORDER BY date ASC, time ASC"
+  );
+}
+
+export async function getCalendarEventsByDate(date: string): Promise<CalendarEvent[]> {
+  const db = await getDb();
+  return db.select<CalendarEvent[]>(
+    "SELECT * FROM calendar_events WHERE date = $1 ORDER BY time ASC",
+    [date]
+  );
+}
+
+export async function addCalendarEvent(
+  event: Omit<CalendarEvent, "id" | "created_at">
+): Promise<void> {
+  const db = await getDb();
+  const id = crypto.randomUUID();
+  await db.execute(
+    `INSERT INTO calendar_events (id, title, description, date, time, color)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [id, event.title, event.description ?? null, event.date, event.time ?? null, event.color]
+  );
+}
+
+export async function updateCalendarEvent(
+  id: string,
+  event: Omit<CalendarEvent, "id" | "created_at">
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE calendar_events
+     SET title = $1, description = $2, date = $3, time = $4, color = $5
+     WHERE id = $6`,
+    [event.title, event.description ?? null, event.date, event.time ?? null, event.color, id]
+  );
+}
+
+export async function deleteCalendarEvent(id: string): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM calendar_events WHERE id = $1", [id]);
 }
 
 // ─── Expenses ────────────────────────────────────────────────────────────────
@@ -136,6 +183,17 @@ export async function setBudget(
 export async function deleteBudget(id: string): Promise<void> {
   const db = await getDb();
   await db.execute("DELETE FROM budgets WHERE id = $1", [id]);
+}
+
+export async function updateBudget(
+  id: string,
+  budget: Omit<Budget, "id" | "created_at">
+): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `UPDATE budgets SET category_id = $1, amount = $2, period = $3, month = $4 WHERE id = $5`,
+    [budget.category_id, budget.amount, budget.period, budget.month, id]
+  );
 }
 
 // ─── Stats ───────────────────────────────────────────────────────────────────

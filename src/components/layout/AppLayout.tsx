@@ -7,11 +7,12 @@ import {
   Receipt,
   Settings,
   PieChart,
-  Menu,
   Wallet,
   ChevronLeft,
   Database,
   AlertCircle,
+  Calendar,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,15 +21,17 @@ interface AppLayoutProps {
 }
 
 const navigation = [
-  { name: "Dasbor", icon: LayoutDashboard, href: "/" },
+  { name: "Beranda", icon: LayoutDashboard, href: "/" },
   { name: "Transaksi", icon: Receipt, href: "/expenses" },
+  { name: "Kalender", icon: Calendar, href: "/calendar" },
   { name: "Analitik", icon: PieChart, href: "/analytics" },
   { name: "Pengaturan", icon: Settings, href: "/settings" },
 ];
 
 const pageTitles: Record<string, string> = {
-  "/": "Dasbor",
+  "/": "Beranda",
   "/expenses": "Transaksi",
+  "/calendar": "Kalender",
   "/analytics": "Analitik",
   "/settings": "Pengaturan",
 };
@@ -55,7 +58,9 @@ export function AppLayout({ children }: AppLayoutProps) {
         )}
       >
         {/* Logo / Toggle */}
-        <div className="h-16 flex items-center px-4 border-b border-zinc-200 dark:border-zinc-800 gap-3">
+        <div
+          className={`h-16 flex items-center px-4 border-b border-zinc-200 dark:border-zinc-800 ${sidebarOpen ? "gap-3" : "gap-1"}`}
+        >
           <div className="flex-shrink-0 h-8 w-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow">
             <Wallet className="h-4 w-4 text-white" />
           </div>
@@ -67,14 +72,14 @@ export function AppLayout({ children }: AppLayoutProps) {
           <button
             onClick={toggleSidebar}
             className={cn(
-              "ml-auto flex-shrink-0 h-7 w-7 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
-              !sidebarOpen && "mx-auto",
+              "ml-auto flex-shrink-0 rounded-md flex items-center justify-center text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors",
+              !sidebarOpen ? "mx-auto h-4 w-4" : "h-7 w-7",
             )}
           >
             {sidebarOpen ? (
               <ChevronLeft className="h-4 w-4" />
             ) : (
-              <Menu className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" />
             )}
           </button>
         </div>

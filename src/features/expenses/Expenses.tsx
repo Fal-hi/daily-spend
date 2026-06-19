@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -13,6 +13,7 @@ import {
 import { Expense, Category, TransactionType } from "../../types";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { CurrencyInput } from "../../components/ui/currency-input";
 import * as XLSX from "xlsx";
 import { Badge } from "../../components/ui/badge";
 import { Field, FieldLabel, FieldError } from "../../components/ui/field";
@@ -42,7 +43,6 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
-  ArrowUpDown,
   SlidersHorizontal,
   Receipt,
   Download,
@@ -87,22 +87,11 @@ function formatDate(dateStr: string) {
   });
 }
 
-function getMonthKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getMonthLabel(key: string) {
-  const [y, m] = key.split("-").map(Number);
-  return new Date(y, m - 1).toLocaleDateString("id-ID", {
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function downloadExcel(
   expenses: Expense[],
   categories: Category[],
-  monthFilter?: string,
+  filterYear?: string,
+  filterMonth?: string,
 ) {
   const catMap = new Map(categories.map((c) => [c.id, c.name]));
 
@@ -127,12 +116,22 @@ function downloadExcel(
     ];
   });
 
+  const periodParts: string[] = [];
+  if (filterYear) periodParts.push(filterYear);
+  if (filterMonth && filterMonth !== "all") {
+    const monthName = new Date(
+      2000,
+      Number(filterMonth) - 1,
+    ).toLocaleDateString("id-ID", { month: "long" });
+    periodParts.push(monthName);
+  }
+
   const data = [
     ["Laporan Transaksi - Dana Harian"],
     [
       `Tanggal Export: ${new Date().toLocaleDateString("id-ID", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}`,
     ],
-    ...(monthFilter ? [[`Periode: ${getMonthLabel(monthFilter)}`]] : []),
+    ...(periodParts.length > 0 ? [[`Periode: ${periodParts.join(" ")}`]] : []),
     [`Total Data: ${expenses.length} transaksi`],
     [],
     [
@@ -176,10 +175,11 @@ function downloadExcel(
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Transaksi");
-  XLSX.writeFile(
-    wb,
-    `transaksi-${monthFilter || new Date().toISOString().slice(0, 10)}.xlsx`,
-  );
+  const fileSuffix =
+    [filterYear, filterMonth && filterMonth !== "all" ? filterMonth : null]
+      .filter(Boolean)
+      .join("-") || new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `transaksi-${fileSuffix}.xlsx`);
 }
 
 function ExpenseModal({
@@ -194,6 +194,7 @@ function ExpenseModal({
   categories: Category[];
 }) {
   const qc = useQueryClient();
+  const [amountInput, setAmountInput] = useState("");
 
   const {
     register,
@@ -204,33 +205,48 @@ function ExpenseModal({
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as any,
-    defaultValues: editing
-      ? {
-          amount: editing.amount,
-          date: editing.date.slice(0, 10),
-          category_id: editing.category_id,
-          notes: editing.notes ?? "",
-          location: editing.location ?? "",
-          payment_method: editing.payment_method ?? "",
-          type: editing.type ?? "expense",
-        }
-      : {
-          date: new Date().toISOString().slice(0, 10),
-          notes: "",
-          location: "",
-          payment_method: "",
-          type: "expense",
-        },
+    defaultValues: {
+      date: new Date().toISOString().slice(0, 10),
+      notes: "",
+      location: "",
+      payment_method: "",
+      type: "expense",
+    },
   });
+
+  useEffect(() => {
+    if (editing) {
+      reset({
+        amount: editing.amount,
+        date: editing.date.slice(0, 10),
+        category_id: editing.category_id,
+        notes: editing.notes ?? "",
+        location: editing.location ?? "",
+        payment_method: editing.payment_method ?? "",
+        type: editing.type ?? "expense",
+      });
+      setAmountInput(String(editing.amount));
+    } else {
+      reset({
+        date: new Date().toISOString().slice(0, 10),
+        notes: "",
+        location: "",
+        payment_method: "",
+        type: "expense",
+      });
+      setAmountInput("");
+    }
+  }, [editing, reset]);
 
   const selectedCategory = watch("category_id") ?? "";
   const selectedPayment = watch("payment_method") ?? "";
   const selectedType = watch("type");
 
   async function onSubmit(values: FormValues) {
+    const amount = Number(amountInput);
     if (editing) {
       await updateExpense(editing.id, {
-        amount: values.amount,
+        amount,
         date: values.date,
         category_id: values.category_id,
         notes: values.notes ?? null,
@@ -240,7 +256,7 @@ function ExpenseModal({
       });
     } else {
       await addExpense({
-        amount: values.amount,
+        amount,
         date: values.date,
         category_id: values.category_id,
         notes: values.notes ?? null,
@@ -251,6 +267,7 @@ function ExpenseModal({
     }
     await qc.invalidateQueries({ queryKey: ["expenses"] });
     reset();
+    setAmountInput("");
     onClose();
   }
 
@@ -292,12 +309,13 @@ function ExpenseModal({
 
           <Field data-invalid={!!errors.amount}>
             <FieldLabel>Jumlah (IDR)</FieldLabel>
-            <Input
-              type="number"
-              step="any"
+            <CurrencyInput
+              value={amountInput}
+              onChange={(raw) => {
+                setAmountInput(raw);
+                setValue("amount", Number(raw), { shouldValidate: true });
+              }}
               placeholder="0"
-              aria-invalid={!!errors.amount}
-              {...register("amount")}
             />
             {errors.amount && <FieldError>{errors.amount.message}</FieldError>}
           </Field>
@@ -455,8 +473,13 @@ export function Expenses() {
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("all");
   const [filterType, setFilterType] = useState<"all" | TransactionType>("all");
-  const [filterMonth, setFilterMonth] = useState(getMonthKey(new Date()));
-  const [sortColumn, setSortColumn] = useState("date");
+  const [filterYear, setFilterYear] = useState(
+    String(new Date().getFullYear()),
+  );
+  const [filterMonth, setFilterMonth] = useState("all");
+  const [sortColumn, setSortColumn] = useState<
+    "date" | "type" | "notes" | "category" | "payment" | "amount"
+  >("date");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -479,8 +502,11 @@ export function Expenses() {
 
   const filtered = useMemo(() => {
     let list = [...expenses];
+    if (filterYear !== "all") {
+      list = list.filter((e) => e.date.slice(0, 4) === filterYear);
+    }
     if (filterMonth !== "all") {
-      list = list.filter((e) => e.date.slice(0, 7) === filterMonth);
+      list = list.filter((e) => e.date.slice(5, 7) === filterMonth);
     }
     if (filterType !== "all") list = list.filter((e) => e.type === filterType);
     if (filterCategory !== "all")
@@ -524,7 +550,16 @@ export function Expenses() {
       return sortOrder === "desc" ? -cmp : cmp;
     });
     return list;
-  }, [expenses, filterCategory, filterType, search, sortOrder, categoryMap]);
+  }, [
+    expenses,
+    filterCategory,
+    filterType,
+    filterYear,
+    filterMonth,
+    search,
+    sortOrder,
+    categoryMap,
+  ]);
 
   const incomeTotal = filtered
     .filter((e) => e.type === "income")
@@ -545,11 +580,50 @@ export function Expenses() {
     setModalOpen(false);
     setEditing(null);
   }
+  function handleSort(col: typeof sortColumn) {
+    if (sortColumn === col) {
+      setSortOrder((s) => (s === "desc" ? "asc" : "desc"));
+    } else {
+      setSortColumn(col);
+      setSortOrder(col === "date" ? "desc" : "asc");
+    }
+  }
 
   return (
     <div>
       <div className="flex flex-wrap sm:flex-row gap-3 items-start xl:items-center justify-between">
-        <div className="flex flex-wrap sm:flex-nowrap gap-2 flex-1 w-full sm:max-w-xl items-end">
+        <div className="flex flex-wrap lg:flex-nowrap gap-2 flex-1 w-full sm:max-w-xl items-end">
+          <Field>
+            <FieldLabel>Tahun</FieldLabel>
+            <Select
+              value={filterYear}
+              onValueChange={(v) => {
+                setFilterYear(v ?? String(new Date().getFullYear()));
+                setFilterMonth("all");
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(() => {
+                  const years = new Set<string>();
+                  for (const e of expenses) {
+                    years.add(e.date.slice(0, 4));
+                  }
+                  const current = new Date().getFullYear();
+                  if (!years.has(String(current))) years.add(String(current));
+                  return [...years]
+                    .sort((a, b) => Number(b) - Number(a))
+                    .map((y) => (
+                      <SelectItem key={y} value={y}>
+                        {y}
+                      </SelectItem>
+                    ));
+                })()}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field>
             <FieldLabel>Bulan</FieldLabel>
             <Select
@@ -558,24 +632,37 @@ export function Expenses() {
             >
               <SelectTrigger>
                 <SelectValue>
-                  {filterMonth === "all" ? "Semua" : getMonthLabel(filterMonth)}
+                  {filterMonth === "all"
+                    ? "Semua"
+                    : new Date(
+                        2000,
+                        Number(filterMonth) - 1,
+                      ).toLocaleDateString("id-ID", { month: "long" })}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Semua</SelectItem>
-                {(() => {
-                  const months = new Set<string>();
-                  for (const e of expenses) {
-                    months.add(e.date.slice(0, 7));
-                  }
-                  return [...months]
-                    .sort((a, b) => b.localeCompare(a))
-                    .map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {getMonthLabel(m)}
-                      </SelectItem>
-                    ));
-                })()}
+                {[
+                  "Januari",
+                  "Februari",
+                  "Maret",
+                  "April",
+                  "Mei",
+                  "Juni",
+                  "Juli",
+                  "Agustus",
+                  "September",
+                  "Oktober",
+                  "November",
+                  "Desember",
+                ].map((label, i) => {
+                  const m = String(i + 1).padStart(2, "0");
+                  return (
+                    <SelectItem key={m} value={m}>
+                      {label}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </Field>
@@ -612,12 +699,12 @@ export function Expenses() {
                 <SlidersHorizontal className="h-4 w-4 mr-2 text-zinc-400 flex-shrink-0" />
                 <SelectValue placeholder="Kategori">
                   {filterCategory === "all"
-                    ? "Semua Kategori"
+                    ? "Semua"
                     : categories.find((c) => c.id === filterCategory)?.name}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Kategori</SelectItem>
+                <SelectItem value="all">Semua</SelectItem>
                 {categories.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -627,7 +714,7 @@ export function Expenses() {
             </Select>
           </Field>
         </div>
-        <Field className="min-w-[20%]">
+        <Field className="!min-w-[20%] hidden xl:block">
           <FieldLabel>Cari Transaksi</FieldLabel>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
@@ -666,45 +753,47 @@ export function Expenses() {
           <div />
         )}
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              setExporting(true);
-              try {
-                await new Promise((r) => setTimeout(r, 500));
-                downloadExcel(
-                  filtered,
-                  categories,
-                  filterMonth !== "all" ? filterMonth : undefined,
-                );
-              } finally {
-                setExporting(false);
-              }
-            }}
-            disabled={exporting}
-          >
-            <Download
-              className={cn(
-                "h-4 w-4 mr-1.5 transition-all",
-                exporting && "animate-bounce",
-              )}
-            />
-            {exporting ? "Mengekspor..." : "Ekspor Excel"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSortOrder((s) => (s === "desc" ? "asc" : "desc"))}
-          >
-            <ArrowUpDown className="h-4 w-4 mr-1.5" />
-            {sortOrder === "desc" ? "Terbaru" : "Terlama"}
-          </Button>
-          <Button size="sm" onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            Tambah
-          </Button>
+        <div className="flex justify-between w-full xl:w-fit items-end">
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setExporting(true);
+                try {
+                  await new Promise((r) => setTimeout(r, 500));
+                  downloadExcel(filtered, categories, filterYear, filterMonth);
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+            >
+              <Download
+                className={cn(
+                  "h-4 w-4 mr-1.5 transition-all",
+                  exporting && "animate-bounce",
+                )}
+              />
+              {exporting ? "Mengekspor..." : "Ekspor Excel"}
+            </Button>
+            <Button size="sm" onClick={openAdd}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              Tambah
+            </Button>
+          </div>
+          <Field className="min-w-[20%] block xl:hidden">
+            <FieldLabel>Cari Transaksi</FieldLabel>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+              <Input
+                placeholder="ex: Makan Siang"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+          </Field>
         </div>
       </div>
 
@@ -751,23 +840,83 @@ export function Expenses() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50 sticky top-0">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Tanggal
+                  <th
+                    className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("date")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Tanggal
+                      {sortColumn === "date" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Tipe
+                  <th
+                    className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("type")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Tipe
+                      {sortColumn === "type" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Catatan
+                  <th
+                    className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("notes")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Catatan
+                      {sortColumn === "notes" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Kategori
+                  <th
+                    className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("category")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Kategori
+                      {sortColumn === "category" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Pembayaran
+                  <th
+                    className="text-left px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("payment")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      Pembayaran
+                      {sortColumn === "payment" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
-                  <th className="text-right px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide">
-                    Jumlah
+                  <th
+                    className="text-right px-5 py-3 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-200 select-none"
+                    onClick={() => handleSort("amount")}
+                  >
+                    <span className="inline-flex items-center justify-end gap-1">
+                      Jumlah
+                      {sortColumn === "amount" && (
+                        <span className="text-zinc-400">
+                          {sortOrder === "desc" ? "↓" : "↑"}
+                        </span>
+                      )}
+                    </span>
                   </th>
                   <th className="px-5 py-3" />
                 </tr>
@@ -840,8 +989,8 @@ export function Expenses() {
                         className={cn(
                           "px-5 py-3.5 text-right font-semibold whitespace-nowrap",
                           exp.type === "income"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : "text-zinc-900 dark:text-zinc-100",
+                            ? "text-emerald-500 dark:text-emerald-400"
+                            : "text-rose-500 dark:text-rose-400",
                         )}
                       >
                         {exp.type === "income" ? "+" : "-"}

@@ -33,3 +33,13 @@ export interface Settings {
   key: string;
   value: string;
 }
+
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  date: string;
+  time: string | null;
+  color: string;
+  created_at: string;
+}

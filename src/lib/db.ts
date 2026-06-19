@@ -1,7 +1,4 @@
 import Database from "@tauri-apps/plugin-sql";
-import { appDataDir } from "@tauri-apps/api/path";
-
-const dir = await appDataDir();
 
 let dbInstance: Database | null = null;
 let dbError: string | null = null;

@@ -1,0 +1,54 @@
+.react-time-picker {
+  width: 100%;
+}
+
+.react-time-picker__wrapper {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 0.5rem;
+  border: 1px solid rgb(228 228 231) !important;
+  background-color: transparent;
+  padding: 0 12px;
+  transition: all 0.2s ease;
+}
+
+.dark .react-time-picker__wrapper {
+  border-color: rgb(63 63 70) !important;
+}
+
+.react-time-picker__wrapper:hover {
+  border-color: rgb(161 161 170) !important;
+}
+
+.react-time-picker__wrapper:focus-within {
+  border-color: rgb(16 185 129) !important;
+  box-shadow: 0 0 0 3px rgb(16 185 129 / 0.2);
+}
+
+.react-time-picker input {
+  font-size: 14px;
+  outline: none;
+  color: inherit;
+}
+
+.react-time-picker__inputGroup {
+  min-width: 0;
+}
+
+.react-time-picker__button {
+  padding: 4px;
+  color: rgb(113 113 122);
+}
+
+.react-time-picker__button:hover {
+  background: transparent !important;
+  color: rgb(24 24 27);
+}
+
+.dark .react-time-picker__button:hover {
+  color: white;
+}
+
+.react-time-picker__clear-button {
+  display: none;
+}

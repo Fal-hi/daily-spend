@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAppStore } from "../../store/useAppStore";
+import { Budget } from "../../types";
 import {
   getCategories,
   addCategory,
   deleteCategory,
   getBudgets,
   setBudget,
+  updateBudget,
   deleteBudget,
   getExpenses,
 } from "../../lib/api";
@@ -14,6 +16,7 @@ import { appDataDir } from "@tauri-apps/api/path";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { CurrencyInput } from "../../components/ui/currency-input";
 import { Field, FieldLabel } from "../../components/ui/field";
 import {
   Card,
@@ -44,6 +47,7 @@ import {
   Trash2,
   PiggyBank,
   AlertTriangle,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -155,9 +159,11 @@ function AddCategoryModal({
 function AddBudgetModal({
   open,
   onClose,
+  editing,
 }: {
   open: boolean;
   onClose: () => void;
+  editing: Budget | null;
 }) {
   const qc = useQueryClient();
   const { data: categories = [] } = useQuery({
@@ -169,15 +175,34 @@ function AddBudgetModal({
   const [loading, setLoading] = useState(false);
   const thisMonth = getMonthKey();
 
-  async function handleAdd() {
+  useEffect(() => {
+    if (editing) {
+      setCategoryId(editing.category_id ?? "all");
+      setAmount(String(editing.amount));
+    } else {
+      setCategoryId("all");
+      setAmount("");
+    }
+  }, [editing, open]);
+
+  async function handleSave() {
     if (!amount || Number(amount) <= 0) return;
     setLoading(true);
-    await setBudget({
-      category_id: categoryId === "all" ? null : categoryId,
-      amount: Number(amount),
-      period: "monthly",
-      month: thisMonth,
-    });
+    if (editing) {
+      await updateBudget(editing.id, {
+        category_id: categoryId === "all" ? null : categoryId,
+        amount: Number(amount),
+        period: "monthly",
+        month: editing.month,
+      });
+    } else {
+      await setBudget({
+        category_id: categoryId === "all" ? null : categoryId,
+        amount: Number(amount),
+        period: "monthly",
+        month: thisMonth,
+      });
+    }
     await qc.invalidateQueries({ queryKey: ["budgets"] });
     setAmount("");
     setCategoryId("all");
@@ -189,12 +214,12 @@ function AddBudgetModal({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Tambah Anggaran</DialogTitle>
+          <DialogTitle>{editing ? "Edit Anggaran" : "Tambah Anggaran"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Bulan</label>
-            <p className="text-sm text-zinc-500">{getMonthLabel(thisMonth)}</p>
+            <p className="text-sm text-zinc-500">{getMonthLabel(editing ? editing.month : thisMonth)}</p>
           </div>
           <Field>
             <FieldLabel>Kategori</FieldLabel>
@@ -221,12 +246,11 @@ function AddBudgetModal({
           </Field>
           <Field>
             <FieldLabel>Batas Anggaran (IDR)</FieldLabel>
-            <Input
-              type="number"
-              placeholder="0"
+            <CurrencyInput
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+              onChange={(raw) => setAmount(raw)}
+              placeholder="0"
+              onKeyDown={(e) => e.key === "Enter" && handleSave()}
             />
           </Field>
         </div>
@@ -235,10 +259,10 @@ function AddBudgetModal({
             Batal
           </Button>
           <Button
-            onClick={handleAdd}
+            onClick={handleSave}
             disabled={loading || !amount || Number(amount) <= 0}
           >
-            {loading ? "Menyimpan..." : "Simpan"}
+            {loading ? "Menyimpan..." : editing ? "Simpan Perubahan" : "Simpan"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -251,6 +275,7 @@ export function SettingsPage() {
   const qc = useQueryClient();
   const [addCatOpen, setAddCatOpen] = useState(false);
   const [addBudgetOpen, setAddBudgetOpen] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
   const [dbPath, setDbPath] = useState("");
 
   useEffect(() => {
@@ -327,7 +352,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <div className="flex gap-4">
+      <div className="flex flex-wrap md:flex-nowrap gap-4">
         <div className="flex flex-col gap-4 w-full">
           <Card>
             <CardHeader>
@@ -360,20 +385,19 @@ export function SettingsPage() {
                       <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
                         {cat.name}
                       </span>
-                      {cat.is_default && (
+                      {cat.is_default ? (
                         <span className="text-xs px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400">
                           D
                         </span>
+                      ) : (
+                        <button
+                          onClick={() => delCatMutation.mutate(cat.id)}
+                          className="text-zinc-400 hover:text-rose-500 transition-colors p-1 rounded"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
-                    {!cat.is_default && (
-                      <button
-                        onClick={() => delCatMutation.mutate(cat.id)}
-                        className="text-zinc-400 hover:text-rose-500 transition-colors p-1 rounded"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
                   </li>
                 ))}
                 {categories.length === 0 && (
@@ -393,7 +417,7 @@ export function SettingsPage() {
                     Atur batas pengeluaran untuk {getMonthLabel(thisMonth)}.
                   </CardDescription>
                 </div>
-                <Button size="sm" onClick={() => setAddBudgetOpen(true)}>
+                <Button size="sm" onClick={() => { setEditingBudget(null); setAddBudgetOpen(true); }}>
                   <Plus className="h-4 w-4 mr-1.5" />
                   Tambah
                 </Button>
@@ -406,7 +430,7 @@ export function SettingsPage() {
                   <p className="text-sm text-zinc-400">
                     Belum ada anggaran bulan ini.
                   </p>
-                  <Button size="sm" onClick={() => setAddBudgetOpen(true)}>
+                  <Button size="sm" onClick={() => { setEditingBudget(null); setAddBudgetOpen(true); }}>
                     <Plus className="h-4 w-4 mr-1" /> Buat anggaran
                   </Button>
                 </div>
@@ -427,12 +451,20 @@ export function SettingsPage() {
                             {b.catName}
                           </span>
                         </div>
-                        <button
-                          onClick={() => delBudgetMutation.mutate(b.id)}
-                          className="text-zinc-400 hover:text-rose-500 transition-colors p-1 rounded"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => { setEditingBudget(b); setAddBudgetOpen(true); }}
+                            className="text-zinc-400 hover:text-emerald-500 transition-colors p-1 rounded"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => delBudgetMutation.mutate(b.id)}
+                            className="text-zinc-400 hover:text-rose-500 transition-colors p-1 rounded"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="flex-1 h-2 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
@@ -480,7 +512,7 @@ export function SettingsPage() {
           </Card>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 w-full">
           <Card>
             <CardHeader>
               <CardTitle>Tampilan</CardTitle>
@@ -525,21 +557,21 @@ export function SettingsPage() {
                   <span className="font-medium text-zinc-700 dark:text-zinc-300">
                     Versi:
                   </span>{" "}
-                  0.2.0 Beta
+                  0.1.0 Beta
                 </p>
                 <p>
                   <span className="font-medium text-zinc-700 dark:text-zinc-300">
                     Fitur:
                   </span>{" "}
-                  Pemasukan & Pengeluaran, Anggaran, Analitik, Ekspor CSV
+                  Pemasukan & Pengeluaran, Anggaran, Analitik, Eksport
                 </p>
               </div>
               <div className="space-y-1.5">
                 <p className="font-medium text-zinc-700 dark:text-zinc-300 text-xs uppercase tracking-wide">
                   Basis Data
                 </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1.5 rounded break-all select-all">
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="xl:flex-1 text-xs bg-zinc-100 dark:bg-zinc-800 px-2 py-1.5 rounded break-all select-all">
                     {dbPath || "Memuat..."}
                   </code>
                   {dbPath && (
@@ -564,7 +596,8 @@ export function SettingsPage() {
       />
       <AddBudgetModal
         open={addBudgetOpen}
-        onClose={() => setAddBudgetOpen(false)}
+        onClose={() => { setAddBudgetOpen(false); setEditingBudget(null); }}
+        editing={editingBudget}
       />
     </>
   );

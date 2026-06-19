@@ -128,6 +128,26 @@ export function Analytics() {
       : 0;
   const isUp = diff > 0;
 
+  const renderPieLabel = ({ cx, cy, midAngle, outerRadius, percent }: any) => {
+    const RADIAN = Math.PI / 180;
+    const radius = outerRadius + 24;
+    const x = cx + radius * Math.cos(-midAngle * RADIAN);
+    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+
+    return (
+      <text
+        x={x}
+        y={y}
+        fill="currentColor"
+        textAnchor={x > cx ? "start" : "end"}
+        dominantBaseline="central"
+        className="text-xs fill-zinc-500 dark:fill-zinc-400"
+      >
+        {(percent * 100).toFixed(0)}%
+      </text>
+    );
+  };
+
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload?.length) {
       return (
@@ -166,7 +186,7 @@ export function Analytics() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">
@@ -249,57 +269,52 @@ export function Analytics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryTotals}
-                    dataKey="total"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={2}
-                  >
-                    {categoryTotals.map((entry, i) => (
-                      <Cell key={i} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip />} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <ul className="mt-4 space-y-2">
-              {categoryTotals.map((c) => {
-                const pct =
-                  totalExpense > 0
-                    ? ((c.total / totalExpense) * 100).toFixed(1)
-                    : "0";
-                return (
-                  <li
+            <div className="flex flex-col sm:flex-row gap-2 xl:gap-10 items-start">
+              <div className="h-64 w-full sm:w-80 flex-shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryTotals}
+                      dataKey="total"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={2}
+                      label={renderPieLabel}
+                      labelLine
+                    >
+                      {categoryTotals.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex-1 w-full space-y-2 pt-2 h-56 overflow-y-auto">
+                {categoryTotals.map((c) => (
+                  <div
                     key={c.name}
                     className="flex items-center justify-between text-sm"
                   >
-                    <span className="flex items-center gap-2">
-                      <span
+                    <p className="flex items-center gap-2 w-[65%]">
+                      <div
                         className="h-2.5 w-2.5 rounded-full flex-shrink-0"
                         style={{ background: c.color }}
                       />
                       <span className="text-zinc-700 dark:text-zinc-300">
                         {c.name}
                       </span>
-                    </span>
-                    <span className="text-zinc-500 dark:text-zinc-400 flex gap-3">
-                      <span>{pct}%</span>
-                      <span className="font-medium text-zinc-800 dark:text-zinc-200 w-28 text-right">
-                        {formatCurrency(c.total)}
-                      </span>
-                    </span>
-                  </li>
-                );
-              })}
-            </ul>
+                    </p>
+                    <p className="font-medium text-zinc-800 dark:text-zinc-200 w-[35%] text-left hidden xl:block">
+                      {formatCurrency(c.total)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
 

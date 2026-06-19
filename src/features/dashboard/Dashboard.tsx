@@ -5,6 +5,7 @@ import {
   getBudgets,
   getAllTimeStats,
   getDailyStats,
+  getCategories,
 } from "../../lib/api";
 import {
   Card,
@@ -28,6 +29,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { cn } from "@/lib/utils";
 
 function formatCurrency(n: number) {
   return new Intl.NumberFormat("id-ID", {
@@ -55,6 +57,10 @@ export function Dashboard() {
   const { data: budgets = [] } = useQuery({
     queryKey: ["budgets"],
     queryFn: getBudgets,
+  });
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: getCategories,
   });
   const { data: allTimeStats } = useQuery({
     queryKey: ["stats", "all"],
@@ -89,10 +95,32 @@ export function Dashboard() {
       : 0;
 
   // Budget progress
-  const totalBudget = budgets
-    .filter((b) => b.month === thisMonth)
-    .reduce((s, b) => s + b.amount, 0);
-  const budgetUsed = totalBudget > 0 ? (thisMonthSpent / totalBudget) * 100 : 0;
+  const monthBudgets = useMemo(() => {
+    return budgets
+      .filter((b) => b.month === thisMonth)
+      .map((b) => {
+        const spent = b.category_id
+          ? thisMonthExpenses
+              .filter(
+                (e) => e.type === "expense" && e.category_id === b.category_id,
+              )
+              .reduce((s, e) => s + e.amount, 0)
+          : thisMonthExpenses
+              .filter((e) => e.type === "expense")
+              .reduce((s, e) => s + e.amount, 0);
+        const catName = b.category_id
+          ? (categories.find((c) => c.id === b.category_id)?.name ?? "Semua")
+          : "Semua Kategori";
+        const catColor =
+          categories.find((c) => c.id === b.category_id)?.color ?? "#10b981";
+        const pct = b.amount > 0 ? (spent / b.amount) * 100 : 0;
+        return { ...b, spent, catName, catColor, pct };
+      });
+  }, [budgets, thisMonthExpenses, categories, thisMonth]);
+
+  const totalBudget = monthBudgets.reduce((s, b) => s + b.amount, 0);
+  const totalSpent = monthBudgets.reduce((s, b) => s + b.spent, 0);
+  const overallUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
 
   // Recent transactions
   const recentTransactions = expenses.slice(0, 5);
@@ -131,7 +159,7 @@ export function Dashboard() {
             <p
               key={i}
               className={
-                p.fill === "#10b981" ? "text-emerald-600" : "text-rose-500"
+                p.name === "Pemasukan" ? "text-emerald-600" : "text-rose-500"
               }
             >
               {p.name}: {formatCurrency(p.value)}
@@ -146,7 +174,7 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
+        <Card className="row-span-6">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Saldo Saat Ini
@@ -164,7 +192,7 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="row-span-6">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Pengeluaran Bulan Ini
@@ -183,7 +211,7 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="row-span-6">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">
               Pemasukan Bulan Ini
@@ -199,18 +227,71 @@ export function Dashboard() {
             </p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="row-span-6 max-h-[200px]">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Anggaran</CardTitle>
             <PiggyBank className="h-4 w-4 text-amber-500" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{budgetUsed.toFixed(0)}%</div>
-            <p className="text-xs text-muted-foreground">
-              {totalBudget > 0
-                ? `${formatCurrency(thisMonthSpent)} / ${formatCurrency(totalBudget)}`
-                : "Belum ada anggaran"}
-            </p>
+          <CardContent className="max-h-[200px] overflow-y-auto">
+            {monthBudgets.length === 0 ? (
+              <>
+                <div className="text-2xl font-bold">-</div>
+                <p className="text-xs text-muted-foreground">
+                  Belum ada anggaran
+                </p>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-2xl font-bold">
+                  {overallUsed.toFixed(0)}%
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {formatCurrency(totalSpent)} / {formatCurrency(totalBudget)}
+                </p>
+                <div className="space-y-2 pt-2 border-t">
+                  {monthBudgets.map((b) => (
+                    <div key={b.id} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ background: b.catColor }}
+                          />
+                          <span className="text-zinc-700 dark:text-zinc-300">
+                            {b.catName}
+                          </span>
+                        </div>
+                        <p
+                          className={cn(
+                            "font-medium text-[10px]",
+                            b.pct > 100
+                              ? "text-rose-500"
+                              : b.pct > 80
+                                ? "text-amber-500"
+                                : "text-emerald-500",
+                          )}
+                        >
+                          {formatCurrency(b.spent)} / {formatCurrency(b.amount)}
+                        </p>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            b.pct > 100
+                              ? "bg-rose-500"
+                              : b.pct > 80
+                                ? "bg-amber-500"
+                                : "bg-emerald-500",
+                          )}
+                          style={{ width: `${Math.min(b.pct, 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
