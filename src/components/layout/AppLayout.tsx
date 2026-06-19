@@ -114,9 +114,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         {/* Bottom version tag */}
         {sidebarOpen && (
           <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-800">
-            <p className="text-xs text-zinc-400 dark:text-zinc-600">
-              v0.2.0 – Beta
-            </p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-600">v1.0.0</p>
           </div>
         )}
       </aside>
