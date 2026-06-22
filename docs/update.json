@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "notes": "https://github.com/Fal-hi/daily-spend/releases/tag/v1.0.0",
+  "pub_date": "2026-01-01T00:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "",
+      "url": "https://github.com/Fal-hi/daily-spend/releases/download/v1.0.0/daily-spend_1.0.0_aarch64.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "",
+      "url": "https://github.com/Fal-hi/daily-spend/releases/download/v1.0.0/daily-spend_1.0.0_x64.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "",
+      "url": "https://github.com/Fal-hi/daily-spend/releases/download/v1.0.0/daily-spend_1.0.0_amd64.AppImage"
+    },
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/Fal-hi/daily-spend/releases/download/v1.0.0/daily-spend_1.0.0_x64-setup.exe"
+    }
+  }
+}

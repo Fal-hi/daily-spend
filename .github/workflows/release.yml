@@ -1,0 +1,155 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform-key: darwin-aarch64
+          - os: macos-13
+            platform-key: darwin-x86_64
+          - os: ubuntu-22.04
+            platform-key: linux-x86_64
+          - os: windows-latest
+            platform-key: windows-x86_64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend deps
+        run: pnpm install
+
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Build & upload release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+
+      - name: Extract signature & bundle name
+        shell: bash
+        run: |
+          SIG_FILE=$(find src-tauri/target -name "*.sig" | head -1)
+          if [ -z "$SIG_FILE" ]; then
+            echo "No .sig file found!"
+            exit 1
+          fi
+          mkdir -p bundle-info
+          cp "$SIG_FILE" "bundle-info/${{ matrix.platform-key }}.sig"
+          BASENAME=$(basename "$SIG_FILE")
+          echo "${BASENAME%.sig}" > "bundle-info/${{ matrix.platform-key }}.bundle"
+
+      - name: Upload bundle info
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-info-${{ matrix.platform-key }}
+          path: bundle-info/
+          if-no-files-found: error
+
+  create-update-json:
+    needs: [build]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all bundle info
+        uses: actions/download-artifact@v4
+        with:
+          path: bundle-infos
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(jq -r '.version' src-tauri/tauri.conf.json)
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Generate update.json
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.value }}"
+          TAG="v${VERSION}"
+          PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          mkdir -p docs
+
+          # Start JSON
+          echo "{" > docs/update.json
+          echo "  \"version\": \"${VERSION}\"," >> docs/update.json
+          echo "  \"notes\": \"https://github.com/Fal-hi/daily-spend/releases/tag/${TAG}\"," >> docs/update.json
+          echo "  \"pub_date\": \"${PUB_DATE}\"," >> docs/update.json
+          echo "  \"platforms\": {" >> docs/update.json
+
+          FIRST=true
+          for DIR in bundle-infos/bundle-info-*; do
+            PLATFORM=$(basename "$DIR" | sed 's/bundle-info-//')
+            SIG_FILE="$DIR/${PLATFORM}.sig"
+            BNDL_FILE="$DIR/${PLATFORM}.bundle"
+
+            if [ ! -f "$SIG_FILE" ] || [ ! -f "$BNDL_FILE" ]; then
+              echo "Warning: missing files for $PLATFORM"
+              continue
+            fi
+
+            SIGNATURE=$(tr -d '\n\r' < "$SIG_FILE")
+            BUNDLE_NAME=$(tr -d '\n\r' < "$BNDL_FILE")
+
+            $FIRST || echo "," >> docs/update.json
+            echo "    \"${PLATFORM}\": {" >> docs/update.json
+            echo "      \"signature\": \"${SIGNATURE}\"," >> docs/update.json
+            echo "      \"url\": \"https://github.com/Fal-hi/daily-spend/releases/download/${TAG}/${BUNDLE_NAME}\"" >> docs/update.json
+            echo "    }" >> docs/update.json
+            FIRST=false
+          done
+
+          echo "  }" >> docs/update.json
+          echo "}" >> docs/update.json
+
+          echo "Generated docs/update.json:"
+          jq . docs/update.json
+
+      - name: Commit & push update.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/update.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: update update.json for v${{ steps.version.outputs.value }}"
+            git push
+          fi
